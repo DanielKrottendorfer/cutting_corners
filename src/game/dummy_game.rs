@@ -304,9 +304,42 @@ impl DummyGame {
     }
 
     fn game_loop(&mut self) {
+        use time::PreciseTime;
+
+        let mut previous = PreciseTime::now();
+        let mut lag: i64 = 0;
+
+        let mcs_per_update: i64 = 1000;
+        /*
+                let mut fpsc = 0;
+
+                let mut start = PreciseTime::now();
+        */
         while !self.closed {
             self.input();
-            self.update(1);
+
+            let current = PreciseTime::now();
+            let elapsed: i64;
+            match previous.to(current).num_microseconds() {
+                Some(x) => elapsed = x,
+                None => elapsed = std::i64::MAX,
+            }
+            previous = current;
+            lag += elapsed;
+
+            while lag >= mcs_per_update {
+                self.update(1);
+                lag -= mcs_per_update;
+            }
+            /*
+            let end = PreciseTime::now();
+            fpsc+=1;
+            if start.to(end).num_seconds()>=1{
+                println!("fps {}",fpsc);
+                fpsc=0;
+                start = PreciseTime::now();
+            }
+            */
             self.render();
         }
     }
