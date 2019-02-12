@@ -1,11 +1,16 @@
+extern crate image;
+extern crate cgmath;
+extern crate collada;
 
-#[macro_use]
-extern crate glium;
+#[macro_use] extern crate glium;
 
-#[path = "./game/dummy_game.rs"]
-pub mod my_game;
+extern  crate assimp;
+
+#[path = "./game/engine/cc_game_engine.rs"]
+pub mod my_game_engine;
 
 fn main(){
-    let mut dummy_game = my_game::DummyGame::new("myGame");
-    dummy_game.start();
+    let ga = my_game_engine::my_game_logic::CCGame::new();
+    let mut ge = my_game_engine::CCGameEngine::new(ga,"test123",false);
+    ge.start();
 }

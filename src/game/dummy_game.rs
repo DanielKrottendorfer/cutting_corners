@@ -6,6 +6,8 @@ use crate::my_game::cgmath::InnerSpace;
 #[path = "./drawable/mesh.rs"]
 mod drawables;
 
+static MOUSE_SPEED: f32 = 0.005;
+
 pub enum Keystate {
     Nothing,
     Pressed,
@@ -18,6 +20,7 @@ pub struct Cam {
     pub perspective: cgmath::Matrix4<f32>,
 }
 
+
 pub struct DummyGame {
     pub renderer: glium::Program,
     pub events_loop: glutin::EventsLoop,
@@ -26,17 +29,18 @@ pub struct DummyGame {
     pub meshes: Vec<drawables::StaticMesh>,
     pub cam: Cam,
     pub keys_pressed: [bool; 6],
+    pub previous_mouse_position: glutin::dpi::LogicalPosition,
 }
 
 impl DummyGame {
-    pub fn new(title: &str) -> DummyGame {
+    pub fn new(title: &str, vsync: bool) -> DummyGame {
         use glium::glutin;
 
         let events_loop = glutin::EventsLoop::new();
         let window = glutin::WindowBuilder::new().with_title(title);
         let context = glutin::ContextBuilder::new()
             .with_depth_buffer(24)
-            .with_vsync(true);
+            .with_vsync(vsync);
         let mut display = glium::Display::new(window, context, &events_loop).unwrap();
 
         let vertex_shader = std::fs::read_to_string("./res/shader/vs.glsl").unwrap();
@@ -62,15 +66,15 @@ impl DummyGame {
             z: 1.0,
         };
 
-        let dir: cgmath::Vector3<f32> = cgmath::Vector3 {
+        let look_dir: cgmath::Vector3<f32> = cgmath::Vector3 {
             x: -2.0,
             y: 1.0,
             z: 1.0,
         };
 
-        let dir = dir.normalize();
+        let look_dir = look_dir.normalize();
 
-        let fv = cgmath::Rad(3.141592 / 3.0);
+        let fv = cgmath::Rad(std::f64::consts::PI / 3.0);
         let perspective: cgmath::Matrix4<f32> =
             cgmath::perspective(fv, (4 / 3) as f32, 0.1, 1024.0);
 
@@ -88,10 +92,11 @@ impl DummyGame {
                 perspective: (perspective),
             },
             keys_pressed: [false, false, false, false, false, false],
+            previous_mouse_position: glutin::dpi::LogicalPosition::new(0.0, 0.0),
         }
     }
 
-    pub fn input(&mut self) {
+    fn input(&mut self) {
         use glutin::ElementState::Pressed;
 
         let mut close = false;
@@ -103,9 +108,33 @@ impl DummyGame {
         let mut x: Keystate = Keystate::Nothing;
         let mut y: Keystate = Keystate::Nothing;
 
+        let mut ctrl_pressed = false;
+        let mut size_changed = false;
+        let fv = cgmath::Rad(std::f64::consts::PI / 3.0);
+        let mut perspective_new: cgmath::Matrix4<f32> = 
+            cgmath::perspective(fv, (4 / 3) as f32, 0.1, 1024.0);
+        let mut current_position: glutin::dpi::LogicalPosition =
+            glutin::dpi::LogicalPosition::new(0.0, 0.0);
+
         self.events_loop.poll_events(|event| match event {
             glutin::Event::WindowEvent { event, .. } => match event {
+                glutin::WindowEvent::Resized(size) => {
+                    size_changed = true;
+                    let fv = cgmath::Rad(std::f64::consts::PI / 3.0);
+                    perspective_new=cgmath::perspective(fv, (size.width / size.height)as f32, 0.1, 1024.0);
+                    
+                },
                 glutin::WindowEvent::CloseRequested => close = true,
+                glutin::WindowEvent::CursorMoved {
+                    position,
+                    modifiers,
+                    ..
+                } => {
+                    if modifiers.ctrl {
+                        ctrl_pressed = true;
+                    }
+                    current_position = position;
+                }
                 glutin::WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
                     Some(glutin::VirtualKeyCode::Escape) => close = true,
                     Some(glutin::VirtualKeyCode::W) => {
@@ -158,6 +187,22 @@ impl DummyGame {
         });
 
         self.closed = close;
+
+        if size_changed {
+            self.cam.perspective = perspective_new;
+        }
+
+        if ctrl_pressed {
+            let dx: f64 = current_position.x - self.previous_mouse_position.x;
+            let dy: f64 = current_position.y - self.previous_mouse_position.y;
+            self.previous_mouse_position = current_position;
+            if dx.abs() <= 5.0 || dy.abs() <= 5.0 {
+                self.cam.h_angle += MOUSE_SPEED * -dx as f32;
+                self.cam.v_angle += MOUSE_SPEED * -dy as f32;
+
+                self.cam.adjust_angle();
+            }
+        }
 
         match w {
             Keystate::Pressed => self.keys_pressed[0] = true,
@@ -263,12 +308,9 @@ impl DummyGame {
     fn render(&self) {
         use cgmath::{conv, Matrix4};
         use glium::Surface;
-
         let mut target = self.display.draw();
         target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
-
         let light = [-1.0, 0.4, 0.9f32];
-
         let up_v = cgmath::Vector3 {
             x: 0.0,
             y: 1.0,
@@ -309,12 +351,12 @@ impl DummyGame {
         let mut previous = PreciseTime::now();
         let mut lag: i64 = 0;
 
-        let mcs_per_update: i64 = 1000;
-        /*
+        let mcs_per_update: i64 = 10000;
+        
                 let mut fpsc = 0;
 
                 let mut start = PreciseTime::now();
-        */
+        
         while !self.closed {
             self.input();
 
@@ -328,18 +370,18 @@ impl DummyGame {
             lag += elapsed;
 
             while lag >= mcs_per_update {
-                self.update(1);
+                self.update(10);
                 lag -= mcs_per_update;
             }
-            /*
+            
             let end = PreciseTime::now();
             fpsc+=1;
             if start.to(end).num_seconds()>=1{
-                println!("fps {}",fpsc);
+                println!("fps: {}",fpsc);
                 fpsc=0;
                 start = PreciseTime::now();
             }
-            */
+            
             self.render();
         }
     }

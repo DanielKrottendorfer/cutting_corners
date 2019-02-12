@@ -28,7 +28,6 @@ impl StaticMesh {
         use std::fs::File;
         use std::io::BufReader;
 
-        println!("{}", path);
         let input = BufReader::new(File::open(path).unwrap());
         let demo: Obj = obj::load_obj(input).unwrap();
         let vertecis = demo.vertices;
